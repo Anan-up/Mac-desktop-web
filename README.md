@@ -1,3 +1,5 @@
+[English](https://github.com/Anan-up/Mac-desktop-web/blob/main/README.md) | [简体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Simplified_Chinese.md) | [繁体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Classical_Chinese.md)
+
 This is a **highly realistic macOS Sonoma-style web desktop simulator**, built entirely with native HTML + CSS + JavaScript, requiring no external dependencies or frameworks. Below is an in-depth summary across three dimensions: technical implementation, interaction logic, and functional modules.
 
 ### 1. Core Architecture and Technical Implementation
@@ -35,3 +37,5 @@ The code embeds 15+ native-style apps, some of which feature **real interaction 
 
 ### 5. Conclusion
 This is not merely a reskinned interface, but a **lightweight yet complete desktop operating system front-end framework**. It fully leverages modern CSS and the browser event model to implement **multi-window management, spatial interaction (resize/drag/snap), and partial app logic** within a regular web page. Whether for technical learning, personal portfolio showcase, or as a reference implementation for a Web application container (Shell), it demonstrates extremely high completeness and design quality. You can open and run it directly in a browser to enjoy an operating experience close to real macOS.
+
+![project-screenshot](project_screenshot.png)
