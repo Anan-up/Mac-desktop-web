@@ -1,4 +1,5 @@
-# 擬 macOS Sonoma 網頁桌面模擬器・述略
+[English](https://github.com/Anan-up/Mac-desktop-web/blob/main/README.md) | [简体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Simplified_Chinese.md) | [繁体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Classical_Chinese.md)
+
 
 此乃**仿真 macOS Sonoma 之網頁桌面模擬器**也，純以原生 HTML、CSS、JavaScript 構成，不假外物框架。今試從技術、交互、功能三端，為君詳述之。
 
@@ -37,3 +38,5 @@
 
 ### 五、結語
 此非徒易皮之面，乃**輕而完之桌面系統前端框架**也。盡用今之 CSS 與瀏覽器事件之模，於常網之中，竟成**多窗之制、空間之交互（伸縮拖曳吸附）與局部應用之機**。無論資於技術之學、個人作品之陳，抑或為網應容器（Shell）之範，皆極其完備而工雅。君可直啟於瀏覽器，得近真 macOS 之趣。
+
+![project-screenshot](project_screenshot.png)
