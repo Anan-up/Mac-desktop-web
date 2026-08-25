@@ -1,3 +1,5 @@
+[English](https://github.com/Anan-up/Mac-desktop-web/blob/main/README.md) | [简体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Simplified_Chinese.md) | [繁体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Classical_Chinese.md)
+
 这是一个**高度拟真的 macOS Sonoma 风格 Web 桌面模拟器**，完全由原生 HTML + CSS + JavaScript 构建，无需任何外部依赖或框架。下面我从技术实现、交互逻辑和功能模块三个维度为你深度总结：
 
 ### 1. 核心架构与技术实现
@@ -35,3 +37,6 @@
 
 ### 5. 总结
 这不仅仅是一个换皮界面，而是一套**轻量级但完整的桌面操作系统前端框架**。它充分利用了现代 CSS 和浏览器事件模型，在普通网页中实现了**多窗口管理、空间交互（缩放/拖拽/吸附）和局部应用逻辑**。无论是用于技术学习、个人作品集展示，还是作为 Web 应用容器（Shell）的参考实现，都具备极高的完成度和设计水准。你可以在浏览器中直接打开运行，获得近似真实 macOS 的操作乐趣。
+
+
+![project-screenshot](project_screenshot.png)
