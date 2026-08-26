@@ -40,3 +40,7 @@
 
 
 ![project-screenshot](project_screenshot.png)
+
+## 许可证
+
+[MIT](LICENSE)
