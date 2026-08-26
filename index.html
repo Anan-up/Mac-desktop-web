@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>macOS · Web Desktop</title>
+<style>
+  :root{
+    --menu-h: 24px;
+    --dock-h: 64px;
+    --radius: 12px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, "Menlo", "Monaco", monospace;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-user-select:none; user-select:none; }
+  html,body{ height:100%; overflow:hidden; font-family:var(--font); }
+  body{ background:#000; color:#fff; position:relative; }
+
+  /* ---------- Desktop / Wallpaper ---------- */
+  #desktop{
+    position:fixed; inset:0; overflow:hidden;
+    /* 默认 macOS Sonoma 风格渐变壁纸（若放入 assets/wallpaper.jpg 则自动覆盖） */
+    background:
+      radial-gradient(120% 90% at 82% 10%, rgba(255,158,92,.95) 0%, rgba(255,120,90,.5) 22%, rgba(255,120,90,0) 46%),
+      radial-gradient(110% 80% at 16% 90%, rgba(122,92,232,.95) 0%, rgba(122,92,232,.42) 26%, rgba(122,92,232,0) 50%),
+      radial-gradient(130% 100% at 50% 48%, rgba(255,92,142,.85) 0%, rgba(255,92,142,.22) 30%, rgba(255,92,142,0) 55%),
+      linear-gradient(135deg, #5b2a86 0%, #b5365f 40%, #e0623c 72%, #f2a03d 100%);
+    background-size:cover; background-position:center;
+  }
+  #desktop::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,0) 14%);
+  }
+
+  /* ---------- Menu Bar ---------- */
+  #menubar{
+    position:fixed; top:0; left:0; right:0; height:var(--menu-h);
+    display:flex; align-items:center; padding:0 12px; gap:0;
+    font-size:13px; font-weight:500; z-index:9000; color:#fff;
+    background:rgba(255,255,255,.14);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    backdrop-filter:blur(24px) saturate(180%);
+    box-shadow:0 .5px 0 rgba(255,255,255,.22) inset;
+  }
+  #menubar .apple{ font-size:14px; width:18px; text-align:center; cursor:default; opacity:1; display:flex; align-items:center; justify-content:center; }
+  #menubar .apple svg{ width:13px; height:15px; }
+  #menubar .appname{ font-weight:700; margin:0 10px 0 8px; }
+  #menubar .menuitem{ padding:2px 10px; border-radius:5px; cursor:default; }
+  #menubar .menuitem:hover{ background:rgba(255,255,255,.22); }
+  #menubar .spacer{ flex:1; }
+  #menubar .right{ display:flex; align-items:center; gap:8px; padding-right:2px; }
+  #menubar .right .ic{ width:18px; height:18px; display:flex; align-items:center; justify-content:center; }
+  #menubar .right .ic svg{ width:16px; height:16px; }
+  #menubar .clock{ font-variant-numeric:tabular-nums; padding-left:2px; font-weight:500; }
+
+  /* ---------- Apple dropdown ---------- */
+  .dropdown{
+    position:fixed; top:var(--menu-h); min-width:240px;
+    background:rgba(245,245,247,.72);
+    -webkit-backdrop-filter:blur(30px) saturate(190%); backdrop-filter:blur(30px) saturate(190%);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:8px; padding:5px; z-index:9500;
+    box-shadow:0 14px 44px rgba(0,0,0,.38);
+    color:#111; font-size:13px; display:none;
+  }
+  .dropdown.show{ display:block; animation:pop .12s ease; }
+  @keyframes pop{ from{ transform:scale(.96); opacity:0 } to{ transform:scale(1); opacity:1 } }
+  .dropdown .row{ display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:6px; cursor:default; }
+  .dropdown .row:hover{ background:rgba(0,122,255,.92); color:#fff; }
+  .dropdown .row .ic{ width:20px; text-align:center; }
+  .dropdown .sep{ height:1px; background:rgba(0,0,0,.14); margin:5px 8px; }
+  .dropdown .row.disabled{ color:#999; pointer-events:none; }
+  .dropdown .row.big{ font-size:15px; font-weight:600; }
+
+  /* ---------- Windows ---------- */
+  .window{
+    position:absolute; top:120px; left:160px; min-width:380px; min-height:260px;
+    background:rgba(246,246,248,.80);
+    -webkit-backdrop-filter:blur(28px) saturate(170%); backdrop-filter:blur(28px) saturate(170%);
+    border:1px solid rgba(255,255,255,.6);
+    border-radius:var(--radius);
+    box-shadow:0 28px 76px rgba(0,0,0,.45), 0 2px 10px rgba(0,0,0,.25);
+    display:flex; flex-direction:column; overflow:hidden; color:#1d1d1f;
+    will-change:transform,opacity;
+  }
+  .window.focused{ box-shadow:0 32px 86px rgba(0,0,0,.5), 0 0 0 .5px rgba(0,122,255,.4); }
+  .window.min{ transform:scale(.04) translateY(90vh); opacity:0; pointer-events:none; }
+  .window.max{ top:calc(var(--menu-h) + 6px) !important; left:6px !important; width:calc(100vw - 12px) !important; height:calc(100vh - var(--menu-h) - var(--dock-h) - 12px) !important; }
+  .winbar{
+    height:38px; flex:0 0 38px; display:flex; align-items:center; padding:0 13px;
+    cursor:default; position:relative;
+    background:linear-gradient(180deg, rgba(255,255,255,.4), rgba(255,255,255,0));
+  }
+  .traffic{ display:flex; gap:8px; align-items:center; }
+  .light{ width:12px; height:12px; border-radius:50%; border:.5px solid rgba(0,0,0,.14); position:relative; box-shadow:inset 0 0 1px rgba(0,0,0,.2); }
+  .light.close{ background:#ff5f57; }
+  .light.min{ background:#febc2e; }
+  .light.max{ background:#28c840; }
+  .light::after{ content:""; position:absolute; inset:0; opacity:0; }
+  .winbar:hover .light.close::after{ background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2 2l4 4M6 2l-4 4' stroke='%23900000' stroke-width='1.1'/%3E%3C/svg%3E") center/8px no-repeat; opacity:1; }
+  .winbar:hover .light.min::after{ background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2 4h4' stroke='%239a6a00' stroke-width='1.1'/%3E%3C/svg%3E") center/8px no-repeat; opacity:1; }
+  .winbar:hover .light.max::after{ background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 4.5L4 3l1.5 1.5M2.5 4.5L4 6l1.5-1.5' stroke='%23186b28' stroke-width='1' fill='none'/%3E%3C/svg%3E") center/8px no-repeat; opacity:1; }
+  .wintitle{ position:absolute; left:0; right:0; text-align:center; font-size:13px; font-weight:600; color:#3a3a3c; pointer-events:none; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .wintitle .ti .appicon-wrap{ width:15px; height:15px; }
+  .winbody{ flex:1; overflow:auto; -webkit-user-select:text; user-select:text; }
+  /* 窗口缩放手柄（边缘 + 四角，macOS 式） */
+  .win-rs{ position:absolute; z-index:6; }
+  .win-rs.n{ top:0; left:34px; right:34px; height:6px; cursor:ns-resize; }
+  .win-rs.s{ bottom:0; left:34px; right:34px; height:6px; cursor:ns-resize; }
+  .win-rs.e{ top:34px; bottom:34px; right:0; width:6px; cursor:ew-resize; }
+  .win-rs.w{ top:34px; bottom:34px; left:0; width:6px; cursor:ew-resize; }
+  .win-rs.ne{ top:0; right:0; width:16px; height:16px; cursor:nesw-resize; }
+  .win-rs.nw{ top:0; left:0; width:16px; height:16px; cursor:nwse-resize; }
+  .win-rs.se{ bottom:0; right:0; width:18px; height:18px; cursor:nwse-resize; }
+  .win-rs.sw{ bottom:0; left:0; width:16px; height:16px; cursor:nesw-resize; }
+  /* 右下角 macOS 风格放大镜 grip 提示 */
+  .win-rs.se::after{ content:""; position:absolute; right:3px; bottom:3px; width:7px; height:7px;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7'%3E%3Cpath d='M6 1L1 6M6 3l-3 3M4 6l2 2' stroke='%23999' stroke-width='.9'/%3E%3C/svg%3E") no-repeat; opacity:.55; }
+
+  /* icon wrapper sizing */
+  .appicon-wrap{ display:inline-flex; align-items:center; justify-content:center; }
+  .appicon-wrap svg, .appicon-wrap img{ width:100%; height:100%; display:block; }
+  .dock-item .appicon-wrap{ width:48px; height:48px; filter:drop-shadow(0 3px 4px rgba(0,0,0,.35)); }
+  .lp-item .ic .appicon-wrap{ width:64px; height:64px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
+
+  /* ---------- Dock ---------- */
+  #dockwrap{
+    position:fixed; left:0; right:0; bottom:6px; display:flex; justify-content:center;
+    z-index:8000; pointer-events:none;
+    transition: transform .45s cubic-bezier(.32,.72,0,1), opacity .4s;
+  }
+  #dockwrap.dock-hidden{ transform: translateY(calc(100% + 16px)); opacity:0; }
+  #dock{
+    pointer-events:auto; display:flex; align-items:flex-end; gap:7px; padding:7px 10px;
+    background:linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,.16));
+    -webkit-backdrop-filter:blur(30px) saturate(200%); backdrop-filter:blur(30px) saturate(200%);
+    border:1px solid rgba(255,255,255,.55); border-radius:26px;
+    box-shadow:0 18px 50px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.6), inset 0 0 0 .5px rgba(255,255,255,.22);
+  }
+  .dock-item{ width:52px; height:52px; position:relative; cursor:pointer; transform-origin:bottom center; transition:transform .12s ease; will-change:transform; display:flex; align-items:center; justify-content:center; }
+  .dock-item .dot{ position:absolute; bottom:-5px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; background:rgba(255,255,255,.92); display:none; }
+  .dock-item.open .dot{ display:block; }
+  .dock-item .tip{ position:absolute; bottom:66px; left:50%; transform:translateX(-50%); background:rgba(40,40,40,.92); color:#fff; font-size:12px; padding:3px 9px; border-radius:6px; white-space:nowrap; opacity:0; pointer-events:none; transition:.12s; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  .dock-item:hover .tip{ opacity:1; }
+  #dock .divider{ width:1px; height:44px; background:rgba(255,255,255,.4); margin:0 4px 4px; align-self:center; }
+
+  /* ---------- Launchpad ---------- */
+  #launchpad{ position:fixed; inset:0; z-index:8500; display:none; background:rgba(20,20,30,.35); -webkit-backdrop-filter:blur(30px) saturate(160%); backdrop-filter:blur(30px) saturate(160%); flex-direction:column; align-items:center; justify-content:center; gap:30px; }
+  #launchpad.show{ display:flex; animation:lp .2s ease; }
+  @keyframes lp{ from{ opacity:0; transform:scale(1.08) } to{ opacity:1; transform:scale(1) } }
+  .lp-grid{ display:grid; grid-template-columns:repeat(6, 1fr); gap:26px 34px; }
+  .lp-item{ width:84px; text-align:center; cursor:pointer; }
+  .lp-item .ic{ width:64px; height:64px; margin:0 auto 6px; }
+  .lp-item .nm{ font-size:12px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+
+  /* ---------- Context menu ---------- */
+  #ctxmenu{ position:fixed; z-index:9600; display:none; }
+
+  /* ---------- App content ---------- */
+  .pad{ padding:18px; }
+  .center{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:14px; }
+  .muted{ color:#6b6b70; }
+  .calc{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:14px; height:100%; }
+  .calc .disp{ grid-column:1/-1; background:#1c1c1e; color:#fff; font-size:34px; font-weight:300; text-align:right; padding:14px 18px; border-radius:10px; overflow:hidden; font-variant-numeric:tabular-nums; }
+  .calc button{ border:none; border-radius:10px; font-size:18px; padding:14px 0; cursor:pointer; font-family:var(--font); background:#e9e9ea; color:#000; transition:.08s; }
+  .calc button:active{ filter:brightness(.9); }
+  .calc button.op{ background:#ff9f0a; color:#fff; }
+  .calc button.fn{ background:#a5a5a8; color:#000; }
+  .calc button.zero{ grid-column:span 2; }
+  .term{ height:100%; background:#1e1e1e; color:#e6e6e6; font-family:var(--font-mono); font-size:13px; padding:12px; overflow:auto; line-height:1.5; }
+  .term .prompt{ color:#3ad07a; }
+  .term input{ background:transparent; border:none; color:#e6e6e6; font-family:inherit; font-size:13px; outline:none; width:70%; caret-color:#3ad07a; }
+  .notes{ display:flex; height:100%; }
+  .notes .side{ width:150px; background:rgba(0,0,0,.04); border-right:1px solid rgba(0,0,0,.08); padding:10px; }
+  .notes .side .n{ padding:8px; border-radius:6px; font-size:13px; cursor:pointer; margin-bottom:4px; }
+  .notes .side .n:hover{ background:rgba(0,0,0,.06); }
+  .notes .side .n.active{ background:#ffd54a; color:#5a4500; font-weight:600; }
+  .notes .main{ flex:1; padding:16px; }
+  .notes .main textarea{ width:100%; height:100%; border:none; outline:none; resize:none; font-family:var(--font); font-size:15px; background:transparent; color:#1d1d1f; }
+  .set{ padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .set .card{ display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:rgba(255,255,255,.6); border-radius:10px; }
+  .set .toggle{ width:42px; height:24px; border-radius:14px; background:#e5e5ea; position:relative; cursor:pointer; transition:.18s; }
+  .set .toggle.on{ background:#34c759; }
+  .set .toggle::after{ content:""; position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition:.18s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+  .set .toggle.on::after{ left:20px; }
+  .safari{ display:flex; flex-direction:column; height:100%; }
+  .safari .tb{ display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(0,0,0,.04); border-bottom:1px solid rgba(0,0,0,.08); }
+  .safari .url{ flex:1; background:#fff; border-radius:9px; padding:6px 12px; font-size:13px; color:#333; display:flex; align-items:center; gap:6px; }
+  .safari .page{ flex:1; background:#fff; padding:26px; overflow:auto; color:#222; }
+  .safari .page h1{ font-size:24px; margin-bottom:10px; }
+  .safari .page p{ font-size:14px; line-height:1.7; color:#444; margin-bottom:10px; }
+  .about{ display:flex; gap:18px; align-items:center; padding:24px; }
+  .about .logo{ width:84px; height:84px; flex:0 0 84px; }
+  .about .meta h2{ font-size:20px; margin-bottom:6px; }
+  .about .meta p{ font-size:13px; color:#555; line-height:1.6; }
+  .scrollbar::-webkit-scrollbar{ width:9px; }
+  .scrollbar::-webkit-scrollbar-thumb{ background:rgba(0,0,0,.22); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+  .scrollbar::-webkit-scrollbar-track{ background:transparent; }
+
+  /* ===== 通用 macOS 应用外壳 ===== */
+  .app{ display:flex; flex-direction:column; height:100%; }
+  .apptb{ display:flex; align-items:center; gap:8px; height:46px; flex:0 0 46px; padding:0 12px;
+    background:linear-gradient(180deg, rgba(255,255,255,.55), rgba(246,246,248,.35)); border-bottom:.5px solid rgba(0,0,0,.12); }
+  .apptb .nb{ width:30px; height:24px; border-radius:6px; background:rgba(0,0,0,.05); display:flex; align-items:center; justify-content:center; font-size:14px; color:#666; cursor:pointer; }
+  .apptb .nb:hover{ background:rgba(0,0,0,.1); }
+  .apptb .ttl{ font-size:14px; font-weight:600; color:#1d1d1f; }
+  .sf{ flex:1; max-width:360px; margin:0 auto; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.85);
+    border:.5px solid rgba(0,0,0,.1); border-radius:8px; padding:5px 10px; font-size:13px; color:#888; }
+  .sf input{ border:none; outline:none; flex:1; font-size:13px; color:#1d1d1f; background:transparent; }
+  .sf.plain{ background:transparent; border:none; max-width:none; padding:0; }
+  .seg{ display:inline-flex; background:rgba(0,0,0,.07); border-radius:7px; padding:2px; gap:2px; }
+  .seg button{ border:none; background:transparent; font-size:12px; padding:4px 11px; border-radius:5px; cursor:pointer; color:#333; font-family:var(--font); }
+  .seg button.on{ background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.18); color:#007aff; font-weight:600; }
+  .src{ width:184px; flex:0 0 184px; background:rgba(0,0,0,.035); border-right:.5px solid rgba(0,0,0,.1); padding:10px 8px; overflow:auto; }
+  .src h4{ font-size:11px; letter-spacing:.04em; color:#9a9aaa; margin:12px 8px 4px; font-weight:600; text-transform:uppercase; }
+  .src .it{ display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; font-size:13px; color:#333; cursor:pointer; }
+  .src .it:hover{ background:rgba(0,0,0,.05); }
+  .src .it.on{ background:rgba(0,122,255,.16); color:#0060d0; font-weight:600; }
+  .src .it .ic{ width:16px; text-align:center; }
+  .badge{ font-size:11px; background:#ff3b30; color:#fff; border-radius:9px; padding:0 6px; margin-left:auto; }
+
+  /* Mail */
+  .mail{ display:flex; height:100%; }
+  .mail .list{ width:248px; flex:0 0 248px; border-right:.5px solid rgba(0,0,0,.1); overflow:auto; }
+  .mail .row{ padding:10px 12px; border-bottom:.5px solid rgba(0,0,0,.06); cursor:pointer; }
+  .mail .row:hover{ background:rgba(0,0,0,.03); }
+  .mail .row .t{ font-size:13px; font-weight:600; }
+  .mail .row .s{ font-size:12px; color:#777; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mail .row .tm{ float:right; font-size:11px; color:#aaa; }
+  .mail .prev{ flex:1; padding:24px 30px; overflow:auto; }
+  .mail .prev h2{ font-size:19px; margin-bottom:4px; }
+  .mail .prev .from{ font-size:12px; color:#888; margin-bottom:16px; }
+
+  /* Messages */
+  .msgs{ display:flex; height:100%; }
+  .msgs .conv{ width:236px; flex:0 0 236px; border-right:.5px solid rgba(0,0,0,.1); overflow:auto; }
+  .msgs .c{ display:flex; gap:10px; padding:9px 12px; cursor:pointer; align-items:center; }
+  .msgs .c:hover{ background:rgba(0,0,0,.03); }
+  .msgs .c.on{ background:rgba(0,122,255,.12); }
+  .msgs .av{ width:38px; height:38px; border-radius:50%; flex:0 0 38px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; font-weight:600; }
+  .msgs .chat{ flex:1; display:flex; flex-direction:column; padding:16px; overflow:auto; gap:4px; background:#fafafa; }
+  .bubble{ max-width:64%; padding:8px 13px; border-radius:18px; font-size:14px; margin:2px 0; line-height:1.4; }
+  .bubble.me{ background:#007aff; color:#fff; align-self:flex-end; border-bottom-right-radius:5px; }
+  .bubble.them{ background:#e9e9eb; color:#1d1d1f; align-self:flex-start; border-bottom-left-radius:5px; }
+  .msgs .bar{ flex:0 0 52px; display:flex; align-items:center; gap:10px; padding:0 16px; border-top:.5px solid rgba(0,0,0,.1); background:#fff; }
+  .msgs .bar input{ flex:1; border:none; outline:none; background:#f1f1f3; border-radius:18px; padding:9px 14px; font-size:14px; }
+
+  /* Maps */
+  .map{ height:100%; position:relative; overflow:hidden; background:linear-gradient(155deg,#dfe9ec,#cfe0d9 60%,#eef0e0); }
+  .map .roads{ position:absolute; inset:0; opacity:.55;
+    background-image:linear-gradient(0deg,transparent 0 49%,#fff 49% 51%,transparent 51%),linear-gradient(90deg,transparent 0 49%,#fff 49% 51%,transparent 51%);
+    background-size:100% 90px,120px 100%; }
+  .map .water{ position:absolute; right:-10%; bottom:-12%; width:60%; height:55%; background:rgba(120,180,220,.5); border-radius:60% 40% 50% 50%/50%; filter:blur(2px); }
+  .map .pin{ position:absolute; transform:translate(-50%,-100%); text-align:center; }
+  .map .pin .lab{ background:#fff; font-size:12px; font-weight:600; padding:3px 9px; border-radius:7px; box-shadow:0 2px 6px rgba(0,0,0,.2); }
+  .map .pin .pt{ width:14px; height:14px; background:#ff3b30; border:3px solid #fff; border-radius:50%; margin:4px auto 0; box-shadow:0 1px 4px rgba(0,0,0,.4); }
+  .map .card{ position:absolute; left:14px; bottom:14px; width:220px; background:#fff; border-radius:12px; padding:12px; box-shadow:0 6px 20px rgba(0,0,0,.25); }
+  .map .card .nm{ font-size:14px; font-weight:700; }
+  .map .card .ad{ font-size:12px; color:#777; margin-top:3px; }
+
+  /* Photos */
+  .photos{ display:flex; height:100%; }
+  .photos .grid{ flex:1; padding:16px; overflow:auto; display:flex; flex-wrap:wrap; gap:12px; align-content:flex-start; }
+  .photos .tile{ width:108px; height:108px; border-radius:10px; box-shadow:0 3px 10px rgba(0,0,0,.12); position:relative; overflow:hidden; }
+  .photos .tile .dt{ position:absolute; left:7px; bottom:6px; font-size:10px; color:#fff; text-shadow:0 1px 2px #000; }
+
+  /* FaceTime */
+  .ft{ height:100%; display:flex; flex-direction:column; background:radial-gradient(circle at 50% 35%,#3a3f4a,#1c1f26); }
+  .ft .stage{ flex:1; display:flex; align-items:center; justify-content:center; }
+  .ft .face{ width:130px; height:130px; border-radius:50%; background:linear-gradient(135deg,#5e5ce6,#bf5af2); display:flex; align-items:center; justify-content:center; color:#fff; font-size:46px; font-weight:600; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+  .ft .ctl{ flex:0 0 76px; display:flex; align-items:center; justify-content:center; gap:18px; }
+  .ft .ctl .b{ width:48px; height:48px; border-radius:50%; background:rgba(255,255,255,.16); display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px; cursor:pointer; }
+  .ft .ctl .b.end{ background:#ff3b30; }
+  .ft .ctl .b:hover{ filter:brightness(1.15); }
+
+  /* Calendar */
+  .cal{ display:flex; flex-direction:column; height:100%; }
+  .cal .grid{ flex:1; display:grid; grid-template-columns:52px repeat(7,1fr); overflow:auto; }
+  .cal .hr{ font-size:11px; color:#aaa; text-align:right; padding:4px 6px 0 0; border-right:.5px solid rgba(0,0,0,.08); }
+  .cal .day{ border-right:.5px solid rgba(0,0,0,.06); border-bottom:.5px solid rgba(0,0,0,.06); position:relative; min-height:48px; }
+  .cal .day .ev{ position:absolute; left:3px; right:3px; border-radius:6px; padding:3px 6px; font-size:11px; color:#fff; overflow:hidden; }
+  .cal .dh{ grid-column:span 1; text-align:center; padding:8px 0; font-size:12px; color:#555; border-bottom:.5px solid rgba(0,0,0,.1); border-right:.5px solid rgba(0,0,0,.06); }
+  .cal .dh b{ display:block; font-size:16px; color:#1d1d1f; }
+  .cal .dh.today b{ color:#ff3b30; }
+
+  /* Reminders */
+  .rem{ display:flex; height:100%; }
+  .rem .list{ flex:1; padding:16px 22px; overflow:auto; }
+  .rem .item{ display:flex; align-items:center; gap:11px; padding:10px 4px; border-bottom:.5px solid rgba(0,0,0,.06); font-size:14px; }
+  .circle{ width:19px; height:19px; border-radius:50%; border:1.6px solid #c7c7cc; cursor:pointer; flex:0 0 19px; }
+  .circle.done{ background:#007aff; border-color:#007aff; position:relative; }
+  .circle.done::after{ content:""; position:absolute; left:6px; top:2.5px; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+  .rem .item .x{ color:#bbb; margin-left:auto; cursor:pointer; font-size:13px; }
+  .rem .add{ display:flex; align-items:center; gap:11px; padding:11px 4px; color:#888; font-size:14px; cursor:text; }
+
+  /* Music */
+  .music{ display:flex; height:100%; }
+  .music .main{ flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .music .now{ display:flex; gap:16px; padding:18px; align-items:center; }
+  .music .cov{ width:84px; height:84px; border-radius:10px; flex:0 0 84px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+  .music .songs{ flex:1; overflow:auto; padding:0 18px 18px; }
+  .music .song{ display:flex; align-items:center; gap:12px; padding:9px 8px; border-radius:8px; font-size:13px; }
+  .music .song:hover{ background:rgba(0,0,0,.04); }
+  .music .song .n{ width:18px; color:#999; text-align:right; font-size:12px; }
+  .music .song .ti{ font-weight:600; }
+  .music .song .ar{ color:#888; font-size:12px; }
+  .music .song .d{ margin-left:auto; color:#aaa; font-size:12px; }
+
+  /* App Store */
+  .store{ height:100%; overflow:auto; padding:18px 22px; }
+  .store .hero{ display:flex; gap:16px; background:linear-gradient(120deg,#2b2b35,#1c1c24); color:#fff; border-radius:16px; padding:22px; align-items:center; margin-bottom:18px; }
+  .store .hero .lg{ width:96px; height:96px; border-radius:22px; flex:0 0 96px; box-shadow:0 6px 18px rgba(0,0,0,.4); }
+  .store .grid2{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:18px; }
+  .store .app{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px; }
+  .store .app .i{ width:72px; height:72px; border-radius:16px; box-shadow:0 3px 9px rgba(0,0,0,.16); }
+  .store .app .nm{ font-size:13px; font-weight:600; }
+  .store .app .sub{ font-size:11px; color:#999; }
+  .store .app .get{ font-size:12px; font-weight:600; color:#007aff; background:rgba(0,122,255,.12); border-radius:14px; padding:4px 16px; cursor:pointer; }
+  .stars{ color:#ff9500; font-size:12px; letter-spacing:1px; }
+
+  /* TextEdit */
+  .te .doc{ padding:30px 42px; font-size:14px; line-height:1.85; color:#1d1d1f; overflow:auto; flex:1; }
+  .te .doc h1{ font-size:22px; margin-bottom:10px; }
+  .te .doc p{ margin-bottom:10px; }
+
+  /* Preview */
+  .prev{ display:flex; height:100%; }
+  .prev .thumbs{ width:118px; flex:0 0 118px; border-right:.5px solid rgba(0,0,0,.1); padding:10px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+  .prev .thumbs .th{ width:100%; height:78px; border-radius:6px; background:linear-gradient(135deg,#dadada,#bdbdbd); border:2px solid transparent; cursor:pointer; }
+  .prev .thumbs .th.on{ border-color:#007aff; }
+  .prev .stage{ flex:1; background:#5b5b5f; display:flex; align-items:center; justify-content:center; overflow:auto; }
+  .prev .pg{ width:62%; aspect-ratio:3/4; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; font-size:60px; }
+  .boot{ position:fixed; inset:0; background:#000; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:18px; z-index:9999; }
+  .boot .ring{ width:40px; height:40px; border:3px solid rgba(255,255,255,.2); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg) } }
+</style>
+</head>
+<body>
+<div id="desktop">
+  <div id="menubar">
+    <div class="apple" id="appleBtn" title="Apple 菜单"><svg viewBox="0 0 24 24" fill="#fff"><path d="M16.5 3c.1 1.2-.4 2.4-1.1 3.2-.8.9-2 1.6-3.1 1.5-.1-1.2.4-2.4 1.1-3.2C13.9 3.5 15.3 2.9 16.5 3zM19.7 17.2c-.5 1.2-.8 1.7-1.4 2.8-.9 1.5-2.2 3.4-3.7 3.4-1.4 0-1.7-.9-3.6-.9s-2.3.9-3.6.9c-1.5 0-2.7-1.8-3.6-3.3C2.3 16.8 1.6 12.4 3 9.7c.9-1.6 2.4-2.6 3.9-2.6 1.5 0 2.4.9 3.6.9 1.2 0 1.9-.9 3.6-.9 1.3 0 2.7.7 3.7 2-3.2 1.8-2.7 6.4.9 7.1z" transform="scale(.92)"/></svg></div>
+    <div class="appname" id="activeApp">访达</div>
+    <div class="menuitem" data-menu="file">文件</div>
+    <div class="menuitem" data-menu="edit">编辑</div>
+    <div class="menuitem" data-menu="view">显示</div>
+    <div class="menuitem" data-menu="window">窗口</div>
+    <div class="menuitem" data-menu="help">帮助</div>
+    <div class="spacer"></div>
+    <div class="right">
+      <div class="ic" title="电池"><svg viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="17" height="10" rx="3" stroke="#fff" stroke-width="1.6"/><rect x="4" y="9" width="11" height="6" rx="1.4" fill="#fff"/><rect x="20.5" y="10" width="1.8" height="4" rx="1" fill="#fff"/></svg></div>
+      <div class="ic" title="Wi‑Fi"><svg viewBox="0 0 24 24" fill="none"><path d="M12 18.5a1.6 1.6 0 100 .01M7.5 14a6.5 6.5 0 019 0M4.8 11a10.5 10.5 0 0114.4 0M2 8a14.5 14.5 0 0120 0" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <div class="ic" title="搜索"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="#fff" stroke-width="1.8"/><path d="M15.5 15.5L20 20" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+      <div class="ic" title="控制中心"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2.5" stroke="#fff" stroke-width="1.6"/><rect x="13" y="3" width="8" height="8" rx="2.5" stroke="#fff" stroke-width="1.6"/><circle cx="7" cy="7" r="1.6" fill="#fff"/><rect x="3" y="14" width="8" height="7" rx="2.5" stroke="#fff" stroke-width="1.6"/><rect x="14" y="14" width="6" height="7" rx="2" fill="#fff"/></svg></div>
+      <div class="clock" id="clock">周一 1月1日 00:00</div>
+    </div>
+  </div>
+
+  <div class="dropdown" id="appleMenu">
+    <div class="row" data-act="about"><span class="ic">🍎</span> 关于本机</div>
+    <div class="row disabled">系统设置…</div>
+    <div class="row disabled">App Store…</div>
+    <div class="sep"></div>
+    <div class="row" data-act="sleep"><span class="ic">💤</span> 睡眠</div>
+    <div class="row" data-act="restart"><span class="ic">🔄</span> 重新启动</div>
+    <div class="row" data-act="shutdown"><span class="ic">⏻</span> 关机…</div>
+    <div class="sep"></div>
+    <div class="row" data-act="lock">锁定屏幕</div>
+    <div class="row" data-act="logout">退出登录 用户…</div>
+  </div>
+
+  <div id="windows"></div>
+
+  <div id="launchpad"><div class="lp-grid" id="lpGrid"></div></div>
+
+  <div id="dockwrap"><div id="dock"></div></div>
+</div>
+
+<div class="boot" id="boot"><div class="ring"></div><div style="color:#fff;font-size:13px">正在启动…</div></div>
+
+<script>
+/* ===== 真实图标自动替换：优先加载 assets/icons/<key>.png（原版 macOS 图标），
+        缺失时回退到下方高保真 SVG 重绘 ===== */
+const ICONS = {
+  finder: `<svg viewBox="0 0 128 128"><defs><linearGradient id="f1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3aa0ff"/><stop offset="1" stop-color="#1f6fe0"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#f1)"/><path d="M64 30c14 0 22 9 22 22 0 11-7 19-15 19-4 0-6-2-10-2s-6 2-10 2c-8 0-15-8-15-19 0-13 8-22 28-22z" fill="#fff"/><g fill="#1f6fe0"><circle cx="53" cy="50" r="4.5"/><circle cx="75" cy="50" r="4.5"/><path d="M50 66c3-5 7-7 14-7s11 2 14 7c-3 2-7 3-14 3s-11-1-14-3z"/></g><path d="M64 86c-8 0-15-4-19-10 5 1 9 0 12-2-4-4-6-9-6-15 5 6 11 9 19 9s14-3 19-9c0 6-2 11-6 15 3 2 7 3 12 2-4 6-11 10-19 10" fill="#fff" opacity=".9"/></svg>`,
+  safari: `<svg viewBox="0 0 128 128"><defs><linearGradient id="s1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3f8ff"/><stop offset="1" stop-color="#d6e6fb"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#s1)"/><circle cx="64" cy="64" r="44" fill="#fff" stroke="#cfe0f7" stroke-width="2"/><g><path d="M64 30 L70 60 L64 64 Z" fill="#ff3b30"/><path d="M64 30 L58 60 L64 64 Z" fill="#ff6b52"/></g><g transform="rotate(45 64 64)"><path d="M64 30 L70 60 L64 64 Z" fill="#1f8fff"/><path d="M64 30 L58 60 L64 64 Z" fill="#54abff"/></g><circle cx="64" cy="64" r="5" fill="#1f8fff"/><circle cx="64" cy="64" r="2.4" fill="#fff"/></svg>`,
+  mail: `<svg viewBox="0 0 128 128"><defs><linearGradient id="m1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2da8ff"/><stop offset="1" stop-color="#0a7fe0"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#m1)"/><path d="M30 40h68c4 0 7 3 7 7v42c0 4-3 7-7 7H30c-4 0-7-3-7-7V47c0-4 3-7 7-7z" fill="#fff"/><path d="M26 46l38 28 38-28" fill="none" stroke="#0a7fe0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  messages: `<svg viewBox="0 0 128 128"><defs><linearGradient id="ms1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5af07a"/><stop offset="1" stop-color="#1fc54e"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#ms1)"/><path d="M40 36h48c10 0 18 8 18 18v18c0 10-8 18-18 18H54l-18 16c-3 3-8 1-8-3v-31c0-10 8-18 18-18z" fill="#fff"/><circle cx="50" cy="62" r="6" fill="#1fc54e"/><circle cx="64" cy="62" r="6" fill="#1fc54e"/><circle cx="78" cy="62" r="6" fill="#1fc54e"/></svg>`,
+  maps: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#e8f4ff"/><path d="M8 70c20-6 34 4 50 2s30-14 62-8v64H8z" fill="#56ab2f"/><path d="M8 86c22-4 36 4 54 2s28-10 58-6v46H8z" fill="#3f8f24"/><path d="M30 28l30 18 22-12 26 16" fill="none" stroke="#ff7a00" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="28" r="7" fill="#ff3b30"/><circle cx="108" cy="50" r="7" fill="#007aff"/></svg>`,
+  photos: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#fff"/><g><path d="M64 64L64 24A40 40 0 0164 64Z" fill="#ff3b30"/><path d="M64 64L104 64A40 40 0 0164 24Z" fill="#ffcc00"/><path d="M64 64L64 104A40 40 0 01104 64Z" fill="#34c759"/><path d="M64 64L24 64A40 40 0 0164 104Z" fill="#007aff"/><path d="M64 64L40 30A40 40 0 0124 64Z" fill="#af52de"/><path d="M64 64L88 98A40 40 0 0188 30Z" fill="#ff2d55"/></g><circle cx="64" cy="64" r="13" fill="#fff"/><circle cx="64" cy="64" r="6" fill="#1d1d1f"/></svg>`,
+  facetime: `<svg viewBox="0 0 128 128"><defs><linearGradient id="ft1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5af07a"/><stop offset="1" stop-color="#1fc54e"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#ft1)"/><circle cx="52" cy="64" r="20" fill="#fff"/><circle cx="52" cy="64" r="11" fill="#1fc54e"/><path d="M78 50l20-10c5-3 10 2 10 7v44c0 5-5 10-10 7L78 78z" fill="#fff"/></svg>`,
+  calendar: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#fff"/><rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="2"/><path d="M8 8h112v34H8z" fill="#ff3b30"/><path d="M8 30h112v12H8z" fill="#ff3b30"/><circle cx="36" cy="25" r="4" fill="#fff"/><circle cx="92" cy="25" r="4" fill="#fff"/><text x="64" y="33" font-size="20" font-weight="700" fill="#fff" text-anchor="middle" font-family="sans-serif">六月</text><g fill="#3a3a3c" font-family="sans-serif" font-weight="700" text-anchor="middle" font-size="15"><text x="36" y="68">一</text><text x="64" y="68">二</text><text x="92" y="68">三</text><text x="36" y="92">四</text><text x="64" y="92">五</text><text x="92" y="92">六</text></g><text x="64" y="118" font-size="26" font-weight="800" fill="#1d1d1f" text-anchor="middle" font-family="sans-serif">17</text></svg>`,
+  notes: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#fff"/><rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="2"/><path d="M8 34h112v-26H8z" fill="#ffd54a"/><rect x="8" y="14" width="112" height="20" fill="#ffd54a"/><circle cx="22" cy="24" r="3" fill="#fff"/><circle cx="34" cy="24" r="3" fill="#fff"/><g stroke="#d9d9d9" stroke-width="3"><path d="M28 52h72"/><path d="M28 68h72"/><path d="M28 84h72"/><path d="M28 100h44"/></g></svg>`,
+  reminders: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#fff"/><rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="2"/><g><circle cx="32" cy="42" r="9" fill="none" stroke="#ff3b30" stroke-width="4"/><circle cx="32" cy="70" r="9" fill="none" stroke="#ff9500" stroke-width="4"/><circle cx="32" cy="98" r="9" fill="none" stroke="#34c759" stroke-width="4"/></g><g stroke="#c8c8cd" stroke-width="4" stroke-linecap="round"><path d="M52 42h44"/><path d="M52 70h44"/><path d="M52 98h44"/></g></svg>`,
+  music: `<svg viewBox="0 0 128 128"><defs><linearGradient id="mu1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb5c74"/><stop offset=".5" stop-color="#fa233b"/><stop offset="1" stop-color="#ff9500"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#mu1)"/><path d="M74 34v40a14 14 0 11-6-11.5V50l-18 4v34a14 14 0 11-6-11.5V44z" fill="#fff"/></svg>`,
+  appstore: `<svg viewBox="0 0 128 128"><defs><linearGradient id="as1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3aa0ff"/><stop offset="1" stop-color="#0a64e0"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#as1)"/><path d="M64 30l9 24 24 9-24 9-9 24-9-24-24-9 24-9z" fill="#fff"/></svg>`,
+  settings: `<svg viewBox="0 0 128 128"><defs><linearGradient id="st1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d0d4da"/><stop offset="1" stop-color="#9aa0a8"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#st1)"/><g fill="#fff"><circle cx="64" cy="64" r="15"/></g><g fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"><path d="M64 34v12M64 82v12M34 64h12M82 64h12M43 43l8 8M77 77l8 8M85 43l-8 8M51 77l-8 8"/></g><circle cx="64" cy="64" r="9" fill="#9aa0a8"/></svg>`,
+  terminal: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#1e1e1e"/><rect x="8" y="8" width="112" height="26" rx="26" fill="#2c2c2e"/><circle cx="26" cy="21" r="4" fill="#ff5f57"/><circle cx="42" cy="21" r="4" fill="#febc2e"/><circle cx="58" cy="21" r="4" fill="#28c840"/><g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M28 56l16 14-16 14"/><path d="M58 84h34"/></g></svg>`,
+  launchpad: `<svg viewBox="0 0 128 128"><defs><linearGradient id="lp1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3a44"/><stop offset="1" stop-color="#1c1c22"/></linearGradient></defs><rect x="8" y="8" width="112" height="112" rx="26" fill="url(#lp1)"/><g fill="#fff"><circle cx="44" cy="44" r="4"/><circle cx="64" cy="44" r="4"/><circle cx="84" cy="44" r="4"/><circle cx="44" cy="64" r="4"/><circle cx="64" cy="64" r="4"/><circle cx="84" cy="64" r="4"/><circle cx="44" cy="84" r="4"/><circle cx="64" cy="84" r="4"/><circle cx="84" cy="84" r="4"/></g><path d="M64 84c6 0 11-3 13-8 1 5 5 8 10 8-2-6-2-11 1-16-5 2-9 1-12-2 4-6 4-12 0-18-4 6-8 7-13 6 1 5-1 10-5 14 4 1 8 0 10-3-1 5 1 9 6 11-5 1-9 4-10 9z" fill="#ff5f57"/></svg>`,
+  trash: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#f3f5f8"/><rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="2"/><rect x="40" y="38" width="48" height="56" rx="8" fill="#fff" stroke="#c8ccd2" stroke-width="3"/><path d="M34 40h60l-6 60a6 6 0 01-6 6H46a6 6 0 01-6-6z" fill="#e9edf1" stroke="#c8ccd2" stroke-width="3"/><rect x="52" y="30" width="24" height="10" rx="4" fill="#c8ccd2"/><g stroke="#9aa0a8" stroke-width="3" stroke-linecap="round"><path d="M52 54v34"/><path d="M64 54v34"/><path d="M76 54v34"/></g></svg>`,
+  calculator: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#1c1c1e"/><rect x="22" y="22" width="84" height="84" rx="14" fill="#2c2c2e"/><rect x="32" y="30" width="64" height="20" rx="6" fill="#000"/><g fill="#fff"><circle cx="40" cy="68" r="7"/><circle cx="64" cy="68" r="7"/><circle cx="88" cy="68" r="7"/><circle cx="40" cy="92" r="7"/><circle cx="64" cy="92" r="7"/></g><circle cx="88" cy="92" r="7" fill="#ff9f0a"/></svg>`,
+  textedit: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#fff"/><rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="2"/><rect x="20" y="20" width="88" height="88" rx="8" fill="#f7f7f7"/><g stroke="#d0d0d5" stroke-width="3" stroke-linecap="round"><path d="M34 40h60"/><path d="M34 54h60"/><path d="M34 68h60"/><path d="M34 82h36"/></g></svg>`,
+  preview: `<svg viewBox="0 0 128 128"><rect x="8" y="8" width="112" height="112" rx="26" fill="#fff"/><rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="2"/><path d="M30 44l18 16 14-12 36 28V92H30z" fill="#c7d2e0"/><circle cx="48" cy="48" r="8" fill="#ff9500"/></svg>`,
+};
+
+/* 生成图标元素：优先用 assets/icons/<key>.png，加载失败回退 SVG */
+function iconEl(key){
+  const wrap = document.createElement('span');
+  wrap.className = 'appicon-wrap';
+  const svg = ICONS[APPS[key] ? APPS[key].icon : key] || ICONS[key] || ICONS.finder;
+  const img = document.createElement('img');
+  img.className = 'appicon';
+  img.alt = key;
+  img.onerror = () => { wrap.innerHTML = svg; };
+  img.src = `assets/icons/${key}.png`;
+  wrap.appendChild(img);
+  return wrap;
+}
+
+/* ===== 应用定义 ===== */
+const APPS = {
+  finder:   { name:"访达",     icon:"finder",   title:"访达",     body:finderBody },
+  safari:   { name:"Safari 浏览器", icon:"safari", title:"Safari 浏览器", body:safariBody },
+  mail:     { name:"邮件",     icon:"mail",     title:"邮件",     body:mailBody },
+  messages: { name:"信息",     icon:"messages", title:"信息",     body:messagesBody },
+  maps:     { name:"地图",     icon:"maps",     title:"地图",     body:mapsBody },
+  photos:   { name:"照片",     icon:"photos",   title:"照片",     body:photosBody },
+  facetime: { name:"FaceTime", icon:"facetime", title:"FaceTime", body:facetimeBody },
+  calendar: { name:"日历",     icon:"calendar", title:"日历",     body:calendarBody },
+  notes:    { name:"备忘录",   icon:"notes",    title:"备忘录",   body:notesBody },
+  reminders:{ name:"提醒事项", icon:"reminders",title:"提醒事项", body:remindersBody },
+  music:    { name:"音乐",     icon:"music",    title:"音乐",     body:musicBody },
+  appstore: { name:"App Store",icon:"appstore", title:"App Store",body:appStoreBody },
+  settings: { name:"系统设置", icon:"settings", title:"系统设置", body:settingsBody },
+  terminal: { name:"终端",     icon:"terminal", title:"user@macbook", body:terminalBody },
+  calculator:{name:"计算器",   icon:"calculator",title:"计算器",  body:calcBody },
+  textedit: { name:"文本编辑", icon:"textedit", title:"未命名.txt", body:textEditBody },
+  preview:  { name:"预览",     icon:"preview",  title:"预览",     body:previewBody },
+};
+
+const DOCK_APPS = ["finder","launchpad","safari","mail","messages","maps","photos","facetime","calendar","notes","reminders","music","appstore","settings","divider","terminal","calculator","trash"];
+
+/* ===== 启动动画 ===== */
+const boot = document.getElementById('boot');
+setTimeout(()=>{ boot.style.transition='opacity .5s'; boot.style.opacity='0'; setTimeout(()=>boot.remove(),520); }, 900);
+
+/* ===== 真实壁纸自动替换 ===== */
+(function(){
+  const wp = new Image();
+  wp.onload = () => {
+    const d = document.getElementById('desktop');
+    d.style.backgroundImage = `url(assets/wallpaper.jpg)`;
+    d.style.backgroundSize = 'cover';
+    d.style.backgroundPosition = 'center';
+  };
+  wp.src = 'assets/wallpaper.jpg';
+})();
+
+/* ===== 时钟 ===== */
+const WK = ["周日","周一","周二","周三","周四","周五","周六"];
+const MO = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+function tick(){
+  const d = new Date();
+  document.getElementById('clock').textContent = `${WK[d.getDay()]} ${MO[d.getMonth()]}${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+tick(); setInterval(tick, 1000*10);
+
+/* ===== 构建 Dock ===== */
+const dock = document.getElementById('dock');
+DOCK_APPS.forEach(key=>{
+  if(key==='divider'){ const d=document.createElement('div'); d.className='divider'; dock.appendChild(d); return; }
+  const item = document.createElement('div');
+  item.className='dock-item'; item.dataset.app=key;
+  item.appendChild(iconEl(key));
+  const tip = document.createElement('span'); tip.className='tip';
+  tip.textContent = key==='trash'?'废纸篓':key==='launchpad'?'启动台':APPS[key].name;
+  const dot = document.createElement('span'); dot.className='dot';
+  item.appendChild(dot); item.appendChild(tip);
+  item.addEventListener('click', ()=>{
+    if(key==='launchpad'){ toggleLaunchpad(); return; }
+    if(key==='trash') return;
+    openApp(key);
+  });
+  dock.appendChild(item);
+});
+
+/* Dock 放大镜（macOS 式平滑透镜放大） */
+const DOCK_MAG = 2.0, DOCK_INFL = 140;
+dock.addEventListener('mousemove', e=>{
+  dock.querySelectorAll('.dock-item').forEach(it=>{
+    const r = it.getBoundingClientRect();
+    const d = Math.abs(e.clientX - (r.left + r.width/2));
+    const s = d < DOCK_INFL ? 1 + (DOCK_MAG-1)*Math.pow(1 - d/DOCK_INFL, 2) : 1;
+    it.style.transition='none';
+    it.style.transform = `scale(${s})`;
+  });
+});
+dock.addEventListener('mouseleave', ()=> dock.querySelectorAll('.dock-item').forEach(it=>{ it.style.transition='transform .2s ease'; it.style.transform='scale(1)'; }));
+
+/* Dock 自动隐藏（macOS 行为：默认开启，鼠标移到底部边缘立刻显示，移出底部边缘立刻隐藏） */
+let dockAutohide = true;
+const dockwrap = document.getElementById('dockwrap');
+function showDock(){ dockwrap.classList.remove('dock-hidden'); }
+function hideDock(){ if(dockAutohide) dockwrap.classList.add('dock-hidden'); }
+function setDockAutohide(on){ dockAutohide = on; if(on){ hideDock(); } else { showDock(); } }
+window.setDockAutohide = setDockAutohide;
+document.addEventListener('mousemove', e=>{
+  if(e.clientY > window.innerHeight - 24){ showDock(); return; }  // 移到底部边缘：立刻显示
+  if(dock.matches(':hover')) return;                              // 停在程序坞上：保持显示
+  hideDock();                                                     // 移出底部边缘：立刻隐藏
+});
+if(dockAutohide) hideDock();  // 默认隐藏，移到边缘才出现
+
+/* ===== 启动台 ===== */
+const lpGrid = document.getElementById('lpGrid');
+Object.keys(APPS).forEach(key=>{
+  const el = document.createElement('div'); el.className='lp-item';
+  const ic = document.createElement('div'); ic.className='ic';
+  ic.appendChild(iconEl(key));
+  const nm = document.createElement('div'); nm.className='nm'; nm.textContent = APPS[key].name;
+  el.appendChild(ic); el.appendChild(nm);
+  el.addEventListener('click', ()=>{ toggleLaunchpad(); openApp(key); });
+  lpGrid.appendChild(el);
+});
+function toggleLaunchpad(){ document.getElementById('launchpad').classList.toggle('show'); }
+
+/* ===== 窗口管理 ===== */
+const windowsEl = document.getElementById('windows');
+let z = 100;
+const openWindows = {};
+
+function openApp(key){
+  if(key==='trash') return;
+  const a = APPS[key]; if(!a) return;
+  const di = dock.querySelector(`.dock-item[data-app="${key}"]`);
+  if(di) di.classList.add('open');
+  if(openWindows[key]){ focusWin(openWindows[key]); return; }
+  const w = document.createElement('div');
+  w.className='window'; w.dataset.app=key;
+  w.id = 'win-'+key+'-'+Date.now();
+  w.style.left = (120 + Object.keys(openWindows).length*28) + 'px';
+  w.style.top  = (90 + Object.keys(openWindows).length*24) + 'px';
+  const ti = document.createElement('span'); ti.className='ti'; ti.appendChild(iconEl(key));
+  w.innerHTML = `
+    <div class="winbar">
+      <div class="traffic">
+        <div class="light close" data-act="close"></div>
+        <div class="light min" data-act="min"></div>
+        <div class="light max" data-act="max"></div>
+      </div>
+      <div class="wintitle"></div>
+    </div>
+    <div class="winbody scrollbar">${typeof a.body==='function'?a.body():a.body}</div>`;
+  w.querySelector('.wintitle').appendChild(ti);
+  w.querySelector('.wintitle').appendChild(document.createTextNode(a.title));
+  windowsEl.appendChild(w);
+  openWindows[key] = w;
+  document.getElementById('activeApp').textContent = a.name;
+  focusWin(w);
+  makeDraggable(w, w.querySelector('.winbar'));
+  makeResizable(w);
+  w.querySelector('[data-act="close"]').addEventListener('click', e=>{ e.stopPropagation(); closeWin(key); });
+  w.querySelector('[data-act="min"]').addEventListener('click', e=>{ e.stopPropagation(); w.classList.add('min'); });
+  w.querySelector('[data-act="max"]').addEventListener('click', e=>{ e.stopPropagation(); w.classList.toggle('max'); });
+  if(key==='calculator') wireCalc(w);
+  if(key==='terminal') wireTerm(w);
+  if(key==='notes') wireNotes(w);
+}
+
+function closeWin(key){
+  const w = openWindows[key]; if(!w) return;
+  w.style.transition='transform .18s, opacity .18s';
+  w.style.transform='scale(.7)'; w.style.opacity='0';
+  setTimeout(()=>{ w.remove(); delete openWindows[key]; const di=dock.querySelector(`.dock-item[data-app="${key}"]`); if(di) di.classList.remove('open'); }, 180);
+}
+
+function focusWin(w){
+  z++; w.style.zIndex = z;
+  document.querySelectorAll('.window').forEach(x=>x.classList.remove('focused'));
+  w.classList.add('focused');
+  const key = w.dataset.app;
+  if(APPS[key]) document.getElementById('activeApp').textContent = APPS[key].name;
+}
+
+windowsEl.addEventListener('mousedown', e=>{ const w=e.target.closest('.window'); if(w) focusWin(w); });
+
+function makeDraggable(win, handle){
+  let sx,sy,ox,oy,drag=false;
+  handle.addEventListener('mousedown', e=>{
+    if(e.target.closest('.traffic')) return;
+    drag=true; sx=e.clientX; sy=e.clientY; ox=win.offsetLeft; oy=win.offsetTop;
+    win.style.transition='none'; e.preventDefault();
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!drag) return;
+    win.style.left = (ox+(e.clientX-sx))+'px';
+    win.style.top  = Math.max(24, oy+(e.clientY-sy))+'px';
+  });
+  window.addEventListener('mouseup', ()=> drag=false);
+}
+
+/* ===== 窗口缩放 ===== */
+function makeResizable(win){
+  if(win.dataset.resizable==='1') return;
+  win.dataset.resizable='1';
+  ['n','s','e','w','ne','nw','se','sw'].forEach(d=>{
+    const h=document.createElement('div'); h.className='win-rs '+d;
+    win.appendChild(h); attachResize(h, win, d);
+  });
+}
+function attachResize(handle, win, dir){
+  const MINW=380, MINH=260;
+  let sx,sy,sw,sh,sl,st,res=false;
+  handle.addEventListener('mousedown', e=>{
+    if(win.classList.contains('max')) return;   // 最大化状态不缩放
+    e.preventDefault();
+    res=true; sx=e.clientX; sy=e.clientY;
+    sw=win.offsetWidth; sh=win.offsetHeight; sl=win.offsetLeft; st=win.offsetTop;
+    win.style.transition='none';
+    document.body.style.cursor = getComputedStyle(handle).cursor;
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!res) return;
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    let nl=sl, nt=st, nw=sw, nh=sh;
+    if(dir.includes('e')) nw = Math.max(MINW, sw+dx);
+    if(dir.includes('s')) nh = Math.max(MINH, sh+dy);
+    if(dir.includes('w')){ nw = Math.max(MINW, sw-dx); nl = sl+(sw-nw); }
+    if(dir.includes('n')){ nh = Math.max(MINH, sh-dy); nt = st+(sh-nh); }
+    win.style.width=nw+'px'; win.style.height=nh+'px';
+    win.style.left=nl+'px'; win.style.top=Math.max(24,nt)+'px';
+  });
+  window.addEventListener('mouseup', ()=>{ if(res){ res=false; document.body.style.cursor=''; }});
+}
+
+/* ===== Apple 菜单 ===== */
+const appleBtn = document.getElementById('appleBtn');
+const appleMenu = document.getElementById('appleMenu');
+appleBtn.addEventListener('click', e=>{
+  e.stopPropagation();
+  const r = appleBtn.getBoundingClientRect();
+  appleMenu.style.left = r.left+'px';
+  appleMenu.classList.toggle('show');
+});
+appleMenu.addEventListener('click', e=>{
+  const row = e.target.closest('.row'); if(!row) return;
+  appleMenu.classList.remove('show');
+  if(row.dataset.act==='about') openAbout();
+});
+document.addEventListener('click', ()=> appleMenu.classList.remove('show'));
+
+/* ===== 关于本机 ===== */
+function openAbout(){
+  const id='win-about';
+  if(document.getElementById(id)){ focusWin(document.getElementById(id)); return; }
+  const w=document.createElement('div'); w.className='window'; w.id=id;
+  w.style.left='calc(50vw - 200px)'; w.style.top='calc(50vh - 150px)';
+  const logo=document.createElement('div'); logo.className='logo'; logo.appendChild(iconEl('finder'));
+  w.innerHTML=`
+    <div class="winbar">
+      <div class="traffic"><div class="light close"></div><div class="light min"></div><div class="light max"></div></div>
+      <div class="wintitle"></div>
+    </div>
+    <div class="winbody scrollbar">
+      <div class="about">
+        <div class="logo"></div>
+        <div class="meta"><h2>macOS Sonoma</h2><p>版本 14.5（Web 模拟版）<br>芯片 Apple M3 Pro<br>内存 18 GB<br>序列号 C02XX1XXJGH7</p></div>
+      </div>
+      <div style="text-align:center;padding:0 0 20px;color:#888;font-size:12px">本页面为网页演示，非真实操作系统。</div>
+    </div>`;
+  w.querySelector('.about .logo').appendChild(logo.firstChild);
+  w.querySelector('.wintitle').appendChild(iconEl('finder'));
+  w.querySelector('.wintitle').appendChild(document.createTextNode('关于本机'));
+  windowsEl.appendChild(w);
+  focusWin(w); makeDraggable(w, w.querySelector('.winbar')); makeResizable(w);
+  w.querySelector('[data-act="close"]').addEventListener('click',()=>{w.style.opacity=0;w.style.transform='scale(.9)';setTimeout(()=>w.remove(),180);});
+}
+
+/* ===== 应用内容 ===== */
+function placeholder(emoji, title, sub, note){
+  return `<div class="center"><div style="font-size:56px">${emoji}</div><div style="font-size:18px;font-weight:600">${title}</div><div class="muted">${sub}</div><div class="muted" style="font-size:12px;max-width:260px;text-align:center">${note}</div></div>`;
+}
+function finderBody(){
+  const fav=[['🖥️','桌面',1],['📁','文档',0],['⬇️','下载',0],['🎵','音乐',0],['🖼️','图片',0]];
+  const side=`<div class="src"><h4>个人收藏</h4>${fav.map(f=>`<div class="it ${f[2]?'on':''}"><span class="ic">${f[0]}</span>${f[1]}</div>`).join('')}<h4>位置</h4><div class="it"><span class="ic">💽</span>Macintosh HD</div><div class="it"><span class="ic">🏠</span>个人</div></div>`;
+  const files=[['📁','项目','文件夹'],['📁','设计稿','文件夹'],['📄','报告.pdf','PDF 文档'],['🖼️','封面.png','PNG 图像'],['📊','数据.numbers','Numbers'],['🎬','demo.mov','视频'],['📝','笔记.txt','纯文本'],['📁','归档','文件夹']];
+  const grid=files.map(f=>`<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:84px;padding:8px;border-radius:8px;cursor:pointer"><div style="font-size:38px">${f[0]}</div><div style="font-size:12px;text-align:center">${f[1]}</div><div style="font-size:10px;color:#999">${f[2]}</div></div>`).join('');
+  return `<div class="app"><div class="apptb"><div class="nb">‹</div><div class="nb">›</div><div class="nb">⟳</div><span style="flex:1"></span><div class="seg"><button class="on">⊞</button><button>☰</button></div><div class="sf"><span>🔍</span><input placeholder="搜索"></div></div><div style="flex:1;display:flex;min-height:0">${side}<div style="flex:1;padding:18px;overflow:auto;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start">${grid}</div></div></div>`;
+}
+function safariBody(){
+  return `<div class="app"><div class="apptb"><div class="nb">‹</div><div class="nb">›</div><div class="nb">⟳</div><div class="sf"><span>🔒</span><input value="https://www.apple.com.cn"></div><div class="nb">＋</div></div><div class="safari" style="flex:1;min-height:0"><div class="page"><h1>欢迎使用 Safari</h1><p>这是一个 macOS 风格的网页桌面演示。顶部是仿真菜单栏，底部是带放大镜效果的 Dock。</p><p>点击 Dock 中的应用即可打开对应窗口，窗口支持拖拽、最小化、最大化与关闭。点击左上角 🍎 可打开“关于本机”。</p><p style="color:#007aff">提示：点击 Dock 最左侧的「启动台」可查看全部应用。</p></div></div></div>`;
+}
+function photosBody(){
+  const cols=['#ff3b30','#ff9500','#ffcc00','#34c759','#007aff','#af52de','#ff2d55','#5ac8fa','#ff3b30','#ffcc00','#34c759','#007aff'];
+  const dates=['6月14日','6月12日','6月10日','6月8日','6月5日','6月3日','5月30日','5月28日','5月25日','5月20日','5月18日','5月15日'];
+  let tiles='';
+  for(let i=0;i<12;i++){ tiles+=`<div class="tile" style="background:linear-gradient(135deg,${cols[i]},#ffffff)"><span class="dt">${dates[i]}</span></div>`; }
+  return `<div class="photos"><div class="src"><h4>资料库</h4><div class="it on"><span class="ic">🖼️</span>所有照片</div><div class="it"><span class="ic">⭐</span>精选</div><div class="it"><span class="ic">🗓️</span>回忆</div><div class="it"><span class="ic">👤</span>人物</div></div><div class="grid">${tiles}</div></div>`;
+}
+function notesBody(){
+  return `<div class="notes"><div class="side">
+      <div style="font-size:12px;color:#888;padding:0 8px 6px">iCloud</div>
+      <div class="n active">📝 购物清单</div><div class="n">💡 灵感收集</div><div class="n">📚 读书笔记</div><div class="n">✈️ 旅行计划</div>
+    </div><div class="main"><textarea>牛奶、鸡蛋、面包
+咖啡豆
+水果（苹果、香蕉）
+清洁剂
+
+— 记得带环保袋</textarea></div></div>`;
+}
+function settingsBody(){
+  const row=(l,on)=>`<div class="card"><span>${l}</span><div class="toggle ${on?'on':''}" onclick="this.classList.toggle('on')"></div></div>`;
+  return `<div class="set"><div style="font-size:15px;font-weight:600;margin-bottom:4px">系统设置</div>
+    ${row('🌙 深色模式',false)}${row('📶 Wi‑Fi',true)}${row('🔵 蓝牙',true)}${row('🔔 勿扰模式',false)}${row('🔊 声音',true)}${row('☀️ 自动亮度',true)}
+    <div class="card"><span>🖥️ 自动隐藏程序坞</span><div class="toggle ${dockAutohide?'on':''}" onclick="const on=!this.classList.contains('on'); this.classList.toggle('on'); setDockAutohide(on);"></div></div>
+  </div>`;
+}
+function terminalBody(){
+  return `<div class="term" id="term">
+    <div><span class="prompt">user@macbook</span>:~$ <span id="termOut"></span></div>
+    <div style="display:flex"><span class="prompt">user@macbook</span>:~$ <input id="termIn" autofocus></div>
+  </div>`;
+}
+function calcBody(){
+  return `<div class="calc"><div class="disp" id="calcDisp">0</div>
+    <button class="fn" data-k="C">C</button><button class="fn" data-k="±">±</button><button class="fn" data-k="%">%</button><button class="op" data-k="/">÷</button>
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button class="op" data-k="*">×</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button class="op" data-k="-">−</button>
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button class="op" data-k="+">+</button>
+    <button class="zero" data-k="0">0</button><button data-k=".">.</button><button class="op" data-k="=">=</button>
+  </div>`;
+}
+function mailBody(){
+  const msgs=[['Apple','您的发票已就绪','感谢您购买 macOS Sonoma 升级版','09:41',1],['GitHub','[security] 新登录提醒','我们检测到一次来自新设备的登录','昨天',0],['设计周报','本周设计评审安排','请在周四前提交评审材料','周一',0],['妈妈','周末回家吗？','记得带点水果回来～','周日',0]];
+  const list=msgs.map(m=>`<div class="row"><span class="tm">${m[3]}</span><div class="t">${m[0]}${m[4]?' <span style="color:#007aff">•</span>':''}</div><div class="s">${m[1]}</div><div class="s" style="color:#9a9a9a">${m[2]}</div></div>`).join('');
+  return `<div class="mail"><div class="list">${list}</div><div class="prev"><h2>您的发票已就绪</h2><div class="from">来自：Apple &lt;no_reply@apple.com&gt; · 2026年6月15日 09:41</div><p style="font-size:14px;line-height:1.8">您好，</p><p style="font-size:14px;line-height:1.8">感谢您购买 macOS Sonoma。本次订单包含：</p><p style="font-size:14px;line-height:1.8">• macOS Sonoma 升级版　　¥968<br>• AppleCare+ 服务计划　¥648</p><p style="font-size:14px;line-height:1.8">合计：<b>¥1,616</b></p></div></div>`;
+}
+function messagesBody(){
+  const convs=[['小美','在吗？晚上一起吃饭呀','#ff9500',1],['工作群','@所有人 周报记得交','#34c759',0],['妈妈','记得带水果','#ff3b30',0],['小李','代码我 review 了','#007aff',0]];
+  const conv=convs.map(c=>`<div class="c ${c[3]?'on':''}"><div class="av" style="background:${c[2]}">${c[0][0]}</div><div><div style="font-size:13px;font-weight:600">${c[0]}</div><div style="font-size:12px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px">${c[1]}</div></div></div>`).join('');
+  return `<div class="msgs"><div class="conv">${conv}</div><div style="flex:1;display:flex;flex-direction:column;min-width:0"><div class="chat"><div class="bubble.them">在吗？晚上一起吃饭呀</div><div class="bubble.me">好呀！去哪家？</div><div class="bubble.them">楼下那家新开的火锅🍲</div><div class="bubble.me">可以，七点见</div><div class="bubble.them">👌 等你</div></div><div class="bar"><input placeholder="信息"></div></div></div>`;
+}
+function mapsBody(){
+  return `<div class="map"><div class="roads"></div><div class="water"></div>
+    <div class="pin" style="left:46%;top:40%"><div class="lab">Apple Park</div><div class="pt"></div></div>
+    <div class="pin" style="left:63%;top:58%"><div class="lab">滨海湾</div><div class="pt"></div></div>
+    <div class="card"><div class="nm">Apple Park</div><div class="ad">One Apple Park Way, Cupertino</div><div style="font-size:12px;color:#007aff;margin-top:6px">驾车 · 12 分钟</div></div>
+    <div class="apptb" style="position:absolute;top:0;left:0;right:0;background:rgba(255,255,255,.72)"><div class="nb">≡</div><div class="sf"><span>🔍</span><input placeholder="搜索地点或地址"></div></div></div>`;
+}
+function facetimeBody(){
+  return `<div class="ft"><div class="stage"><div class="face">小</div></div><div class="ctl">
+    <div class="b">🎤</div><div class="b">📹</div><div class="b">🔲</div><div class="b end">📞</div></div></div>`;
+}
+function calendarBody(){
+  const wk=[['周一','15'],['周二','16'],['周三','17'],['周四','18'],['周五','19'],['周六','20'],['周日','21']];
+  const head='<div></div>'+wk.map(d=>`<div class="dh ${d[1]==='17'?'today':''}"><span>${d[0]}</span><b>${d[1]}</b></div>`).join('');
+  const times=['8','9','10','11','12','13','14','15','16','17','18','19'];
+  let rows='';
+  times.forEach((t,i)=>{
+    let cells='';
+    for(let d=0;d<7;d++){
+      let ev='';
+      if(d===0&&i===1) ev=`<div class="ev" style="top:2px;height:44px;background:#ff3b30">团队站会</div>`;
+      if(d===2&&i===3) ev=`<div class="ev" style="top:2px;height:64px;background:#007aff">设计评审</div>`;
+      if(d===4&&i===4) ev=`<div class="ev" style="top:2px;height:44px;background:#34c759">午餐 · 小李</div>`;
+      if(d===5&&i===6) ev=`<div class="ev" style="top:2px;height:44px;background:#af52de">电影之夜</div>`;
+      cells+=`<div class="day">${ev}</div>`;
+    }
+    rows+=`<div class="hr">${t}:00</div>${cells}`;
+  });
+  return `<div class="cal"><div class="apptb"><div class="nb">‹</div><div class="nb">›</div><span class="ttl">2026年6月15日 – 6月21日</span><span style="flex:1"></span><div class="seg"><button>日</button><button class="on">周</button><button>月</button></div></div><div class="grid">${head}${rows}</div></div>`;
+}
+function remindersBody(){
+  const items=[['买菜','#ff3b30',1],['健身 30 分钟','#34c759',0],['回复邮件','#007aff',0],['读书 20 页','#ff9500',0],['给妈妈打电话','#af52de',1]];
+  const side=`<div class="src"><h4>我的列表</h4><div class="it on"><span class="ic">🔴</span>今天</div><div class="it"><span class="ic">🟠</span>计划</div><div class="it"><span class="ic">🟢</span>杂项</div></div>`;
+  const list=items.map(it=>`<div class="item"><div class="circle ${it[2]?'done':''}" onclick="this.classList.toggle('done')"></div><span>${it[0]}</span><span class="x">×</span></div>`).join('');
+  return `<div class="rem">${side}<div class="list"><div style="font-size:22px;font-weight:700;margin-bottom:14px">今天</div>${list}<div class="add">＋ 新建提醒事项</div></div></div>`;
+}
+function musicBody(){
+  const songs=[['Web Desktop 主题曲','Various','3:24'],['Morning Coffee','Lofi Beats','2:58'],['Ocean Drive','Synthwave','4:11'],['深夜代码','Chillhop','3:47'],['Sunset','Retro','3:02']];
+  const list=songs.map((s,i)=>`<div class="song"><div class="n">${i+1}</div><div><div class="ti">${s[0]}</div><div class="ar">${s[1]}</div></div><div class="d">${s[2]}</div></div>`).join('');
+  return `<div class="music"><div class="src"><h4>资料库</h4><div class="it on"><span class="ic">🎵</span>歌曲</div><div class="it"><span class="ic">👤</span>艺人</div><div class="it"><span class="ic">💿</span>专辑</div><div class="it"><span class="ic">📻</span>广播</div></div><div class="main"><div class="now"><div class="cov" style="background:linear-gradient(135deg,#ff9f0a,#ff3b30)"></div><div><div style="font-size:16px;font-weight:700">Web Desktop 主题曲</div><div style="font-size:13px;color:#888">Various · 专辑《桌面》</div><div style="font-size:12px;color:#34c759;margin-top:5px">▶ 正在播放</div></div></div><div class="songs">${list}</div></div></div>`;
+}
+function appStoreBody(){
+  const apps=[['Xcode','开发者工具','#1a6cff','★★★★★'],['Keynote','演讲','#ff3b30','★★★★☆'],['Pixelmator Pro','图像编辑','#34c759','★★★★★'],['Things','待办','#ff9500','★★★★★'],['Final Cut Pro','视频','#1a1a1a','★★★★☆'],['Logic Pro','音乐制作','#af52de','★★★★★'],['Pages','文档','#34c759','★★★★☆'],['Numbers','表格','#34c759','★★★★☆']];
+  const grid=apps.map(a=>`<div class="app"><div class="i" style="background:${a[2]}"></div><div class="nm">${a[0]}</div><div class="sub">${a[1]}</div><div class="stars">${a[3]}</div><div class="get">获取</div></div>`).join('');
+  return `<div class="store"><div class="hero"><div class="lg" style="background:linear-gradient(135deg,#1a6cff,#5e5ce6)"></div><div><div style="font-size:12px;opacity:.8">今天推荐</div><div style="font-size:22px;font-weight:800;margin:4px 0">为你精选</div><div style="font-size:13px;opacity:.85;line-height:1.5">发现提升效率的精选 App 与游戏，立即获取。</div></div></div><div class="grid2">${grid}</div></div>`;
+}
+function textEditBody(){
+  return `<div class="te"><div class="apptb"><div class="seg"><button class="on">正文</button><button>标题</button></div><span style="flex:1"></span><div class="nb" style="font-weight:800">B</div><div class="nb" style="font-style:italic;font-family:serif">i</div><div class="nb" style="text-decoration:underline">U</div><div class="sf plain"><span>🔍</span><input placeholder="查找"></div></div><div class="doc"><h1>未命名文稿</h1><p>这是一个 macOS 风格文本编辑演示。你可以在这里输入任何内容，窗口支持拖拽、缩放与最小化。</p><p>文本编辑是 macOS 上轻量又顺手的纯文本／富文本工具——就像现在这样。</p><p style="color:#888">提示：点击左上角的红黄绿按钮可控制窗口。</p></div></div>`;
+}
+function previewBody(){
+  return `<div class="prev"><div class="thumbs"><div class="th on"></div><div class="th"></div><div class="th"></div><div class="th"></div></div><div class="stage"><div class="pg">🖼️</div></div></div>`;
+}
+function wireCalc(w){
+  const disp = w.querySelector('#calcDisp');
+  let cur='0', prev=null, op=null, fresh=true;
+  const set=d=>disp.textContent=d;
+  w.querySelectorAll('.calc button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const k=b.dataset.k;
+      if(/[0-9]/.test(k)){ cur=(cur==='0'||fresh)?k:cur+k; fresh=false; set(cur); }
+      else if(k==='.'){ if(!cur.includes('.')){ cur+='.'; set(cur);} }
+      else if(k==='C'){ cur='0'; prev=null; op=null; set('0'); }
+      else if(k==='±'){ cur=String(parseFloat(cur)*-1); set(cur); }
+      else if(k==='%'){ cur=String(parseFloat(cur)/100); set(cur); }
+      else if(['+','-','*','/'].includes(k)){ if(op&&!fresh) compute(); prev=parseFloat(cur); op=k; fresh=true; }
+      else if(k==='='){ if(op!==null){ compute(); op=null; prev=null; } }
+      function compute(){ const a=prev,b=parseFloat(cur); let r=0; if(op==='+')r=a+b; if(op==='-')r=a-b; if(op==='*')r=a*b; if(op==='/')r=b?a/b:0; cur=String(Math.round(r*1e10)/1e10); set(cur); }
+    });
+  });
+  setTimeout(()=>w.querySelector('.calc').focus(),50);
+}
+function wireTerm(w){
+  const input=w.querySelector('#termIn'), out=w.querySelector('#termOut');
+  const cmds={ help:'可用命令：help, date, whoami, echo <文本>, clear, neofetch, ls', date:new Date().toString(), whoami:'user', neofetch:'       user@macbook\n  🍎  macOS Sonoma 14.5 (Web)\n  chip: Apple M3 Pro\n  mem : 18 GB', ls:'Desktop  Documents  Downloads  Music  Pictures' };
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){
+      const v=input.value; input.value='';
+      const hist=`<div><span class="prompt">user@macbook</span>:~$ ${v}</div>`;
+      let res = v.trim()===''?'':v==='clear'?'CLEAR':v.startsWith('echo ')?v.slice(5):(cmds[v.trim()]!==undefined?cmds[v.trim()]:`command not found: ${v.split(' ')[0]}`);
+      if(res==='CLEAR'){ out.innerHTML=''; return; }
+      out.innerHTML += hist + (res?`<div>${res.replace(/\n/g,'<br>')}</div>`:'');
+      input.scrollIntoView();
+    }
+  });
+  setTimeout(()=>input.focus(),50);
+}
+function wireNotes(w){
+  w.querySelectorAll('.notes .side .n').forEach(n=>{
+    n.addEventListener('click',()=>{
+      w.querySelectorAll('.notes .side .n').forEach(x=>x.classList.remove('active'));
+      n.classList.add('active');
+      const map={ '📝 购物清单':'牛奶、鸡蛋、面包\n咖啡豆\n水果（苹果、香蕉）\n清洁剂','💡 灵感收集':'记录每一个闪现的念头…','📚 读书笔记':'书摘与思考。','✈️ 旅行计划':'目的地、行程与预算。'};
+      w.querySelector('.notes .main textarea').value = map[n.textContent]||'';
+    });
+  });
+}
+
+/* ===== 桌面右键菜单 ===== */
+const ctxmenu=document.getElementById('ctxmenu');
+document.getElementById('desktop').addEventListener('contextmenu', e=>{
+  e.preventDefault();
+  ctxmenu.style.display='block'; ctxmenu.style.left=e.clientX+'px'; ctxmenu.style.top=e.clientY+'px';
+  ctxmenu.innerHTML=`<div class="dropdown show" style="position:static;display:block">
+    <div class="row" onclick="toggleLaunchpad()">🚀 启动台</div>
+    <div class="row" onclick="openAbout()">🍎 关于本机</div>
+    <div class="row" onclick="location.reload()">🔄 重新启动</div>
+    <div class="sep"></div>
+    <div class="row" onclick="setDockAutohide(!dockAutohide);">${dockAutohide?'🙈 取消自动隐藏':'👁️ 启用自动隐藏'}</div>
+    <div class="row disabled">更改桌面背景…</div>
+  </div>`;
+});
+document.addEventListener('click',()=>{ ctxmenu.style.display='none'; });
+window.toggleLaunchpad=toggleLaunchpad;
+window.openAbout=openAbout;
+
+setTimeout(()=> openApp('safari'), 1200);
+</script>
+</body>
+</html>
