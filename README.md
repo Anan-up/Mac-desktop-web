@@ -39,3 +39,7 @@ The code embeds 15+ native-style apps, some of which feature **real interaction 
 This is not merely a reskinned interface, but a **lightweight yet complete desktop operating system front-end framework**. It fully leverages modern CSS and the browser event model to implement **multi-window management, spatial interaction (resize/drag/snap), and partial app logic** within a regular web page. Whether for technical learning, personal portfolio showcase, or as a reference implementation for a Web application container (Shell), it demonstrates extremely high completeness and design quality. You can open and run it directly in a browser to enjoy an operating experience close to real macOS.
 
 ![project-screenshot](project_screenshot.png)
+
+## License
+
+[MIT](LICENSE)
