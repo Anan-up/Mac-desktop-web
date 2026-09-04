@@ -1,4 +1,4 @@
-[English](https://github.com/Anan-up/Mac-desktop-web/blob/main/README.md) | [简体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Simplified_Chinese.md) | [繁体中文](https://github.com/Anan-up/Mac-desktop-web/blob/main/README_Classical_Chinese.md)
+[English](README.md) | [简体中文](README_Simplified_Chinese.md) | [繁體中文](README_Classical_Chinese.md)
 
 
 此乃**仿真 macOS Sonoma 之網頁桌面模擬器**也，純以原生 HTML、CSS、JavaScript 構成，不假外物框架。今試從技術、交互、功能三端，為君詳述之。
